@@ -37,7 +37,6 @@ def train():
     # 配置Saver，用于保存最佳模型
     saver = tf.train.Saver()
 
-
     # 加载经过处理后的训练数据
     x_train, y_train, _, _ = get_all_samples(date_returns, word_to_id)
 
@@ -47,11 +46,7 @@ def train():
 
         total_batch = 0  # 当前已训练的总批次
         best_acc_on_whole_train = 0.0  # 训练集上的最佳准确率
-        last_improved = 0  # 上一次有提升时对应的总批次数
-        # 如果超过2000个batch，且在训练集上没有提升，就提前结束训练
-        require_improvement = 2000
 
-        flag = False
         for epoch in range(config.num_epochs):
             print('current_epoch(start from 1):', epoch + 1)
             # 用于记录在训练集上的loss和accuracy
@@ -107,7 +102,7 @@ def train():
 
 
 def test():
-    _, _, x_test, y_test,  = get_all_samples(date_returns, word_to_id, ['张中秦'])
+    _, _, x_test, y_test,  = get_all_samples(date_returns, word_to_id, ['股海上的灯塔'])
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
         saver = tf.train.Saver()
@@ -137,20 +132,22 @@ def test():
 
 if __name__ == '__main__':
     config = ModelConfig()  # 模型的各项参数
+
+    # 保存模型的路径
     save_dir = save_dir % config.num_epochs
     tensorboard_dir = tensorboard_dir % config.num_epochs
+    # 若路径不存在，则自动创建
     if not os.path.exists(os.path.split(save_dir)[0]):
         os.makedirs(os.path.split(save_dir)[0])  # 创建保存模型的文件夹
 
     if not os.path.exists(tensorboard_dir):
         os.makedirs(tensorboard_dir)
 
-    config = ModelConfig()  # 模型的各项参数
-    words, word_to_id = read_vocab('./Util/')  # 读取字典
+    words, word_to_id, wordEmedding = read_vocab('./Util/')  # 读取字典，字典到id的映射，以及词向量
     date_returns: dict = get_date_returns('./Util/')  # 每个日期接下来三个交易日的return
     config.vocab_size = len(words)
     # 建立CNN模型
-    model = Model(config)
+    model = Model(config, wordEmedding)
 
     train_or_test = 'test'
     if train_or_test == 'train':

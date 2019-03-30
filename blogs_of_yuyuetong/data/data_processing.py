@@ -10,7 +10,7 @@ from Util.utils import *
 def process_original_blogs(blogger_name):
     """
     对于某个博主的博文进行处理，包括分词、选择重点词汇、去除停用词、同义词处理，
-    然后输出到MySQL数据库中
+    截取段落前后部分，然后输出到MySQL数据库中
     :param blogger_name:
     :return:
     """
@@ -18,7 +18,7 @@ def process_original_blogs(blogger_name):
     jieba.load_userdict("../../Util/MyDict.txt")
     # 连接数据库
     db = pymysql.connect(MYSQL_HOST, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE,
-                         port=MYSQL_PORT)
+                         port=MYSQL_PORT, charset='utf8')
     cursor = db.cursor()
 
     # 停用词表

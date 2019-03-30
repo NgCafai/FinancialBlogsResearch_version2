@@ -5,7 +5,8 @@ from collections import Counter
 import pickle
 from tensorflow import keras
 import numpy
-from typing import Dict
+import gensim
+
 
 def get_synonyms(file_path):
     """
@@ -16,10 +17,11 @@ def get_synonyms(file_path):
     path = os.path.join(file_path, './synonyms.txt')
     with open(path, 'r', encoding='utf-8') as f:
         for line in f:
-            words = line.strip().split(' ')
-            target = words[0].strip()
-            for i in range(1, len(words)):
-                dic[words[i].strip()] = target
+            if line.strip() != '':
+                words = line.strip().split(' ')
+                target = words[0].strip()
+                for i in range(1, len(words)):
+                    dic[words[i].strip()] = target
     return dic
 
 
@@ -30,44 +32,90 @@ def get_stop_words(file_path) -> set:
     """
     stop_words_dir = os.path.join(file_path, './stop_words.txt')
     with open(stop_words_dir, 'r', encoding='utf-8') as f:
-        stop_words: set = {word.strip() for word in f if word.strip()}
+        stop_words: set = {word.strip() for word in f if word.strip() and word.strip() != ''}
     return stop_words
 
 
-def build_vocab(vocab_dir='./vocabulary.txt'):
+def getWordEmbedding(words, file_path='../word2vec/'):
     """
-    根据2009年初到2017年末的文本（分词后），选出频率最高的词，构建词典，并保存到vocab_dir中
-    :param vocab_dir:
-    :param vocab_size:
+    按照words中的词，取出预训练好的word2vec中的词向量
+    :param words: 训练集中文档频率大于5的词
+    :param file_path: 包含训练好的词向量模型的路径
     :return:
     """
-    all_data = []
+    path = os.path.join(file_path, './word2Vec.bin')
+    wordVec = gensim.models.KeyedVectors.load_word2vec_format(path, binary=True)
+    vocab = []
+    wordEmbedding = []
+
+    # 添加 "pad" 和 "UNK", 以及初始化对应的词向量
+    vocab.append("<pad>")
+    vocab.append("<UNK>")
+    wordEmbedding.append(numpy.zeros(embedding_dim))
+    wordEmbedding.append(numpy.random.randn(embedding_dim))
+
+    for word in words:
+        try:
+            vector = wordVec.wv[word]
+            vocab.append(word)
+            wordEmbedding.append(vector)
+        except:
+            print(word + "不存在于词向量中")
+
+    return vocab, numpy.array(wordEmbedding)
+
+
+def build_vocab(vocab_dir='./vocabulary.txt', threshold=8):
+    """
+    根据2009年初到2017年10月中的文本（分词后），选出文档频率大于threshold的词，构建词典，并保存到vocab_dir中
+    :param vocab_dir:
+    :param threshold:
+    :return:
+    """
     # 连接数据库
     db = pymysql.connect(MYSQL_HOST, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE,
                          port=MYSQL_PORT, charset='utf8')
     cursor = db.cursor()
 
     # 构建查询语句，并获取结果
-    sql = "select * from processed_blogs " \
-          "where created_date between '2008-01-01 00:00:00' and '2018-01-01 00:00:00'"
-    try:
-        cursor.execute(sql)
-        processed_blogs = cursor.fetchall()
-    except:
-        print('Error when fetching blogs')
-        return
+    results = []
+    for blogger_name in blogger_names:
+        sql = "select * from processed_blogs_all_words " \
+              "where blogger_name = \'%s\' and created_date between '2009-01-01 00:00:00' and '2017-10-16 00:00:00'" \
+              % blogger_name
+        try:
+            cursor.execute(sql)
+            processed_blogs_all_words = cursor.fetchall()
+        except:
+            print('Error when fetching blogs')
+            return
+        results.extend(processed_blogs_all_words)
 
-    for processed_blog in processed_blogs:
-        all_data.extend(processed_blog[2].split())
+    dic = {}  # 记录所有词的文档频率
+    for processed_blog in results:
+        temp_set = set()  # 记录当前文章有哪些词
+        words = processed_blog[2].split()
+        for word in words:
+            temp_set.add(word)
+        for word in temp_set:
+            if word in dic.keys():
+                dic[word] += 1
+            else:
+                dic[word] = 1
 
-    # 选出vocab - 1个频率最高的词
-    counter = Counter(all_data)
-    count_pairs = counter.most_common(vocab_size - 1)
-    most_frequent_words, _ = list(zip(*count_pairs))
-    most_frequent_words = ['<pad>'] + list(most_frequent_words)
+    # 排序并选出文档频率大于threshold的词
+    sorted_dic = sorted(dic.items(), key=lambda d: d[1])
+    sorted_dic.reverse()
+
+    words = [word for word, value in sorted_dic if value > threshold]
+    vocab, wordEmbedding = getWordEmbedding(words)
+    with open('./wordEmbedding.pk', 'wb') as f:
+        pickle.dump(wordEmbedding, f)
+
     # 写入到词汇表
     with open(vocab_dir, 'w', encoding='utf-8') as f:
-        f.write('\n'.join(most_frequent_words) + '\n')
+        for word in vocab:
+            f.write('%s\n' % word)
 
 
 def read_vocab(file_path):
@@ -78,10 +126,15 @@ def read_vocab(file_path):
     """
     path = os.path.join(file_path, './vocabulary.txt')
     with open(path, 'r', encoding='utf-8') as f:
-        words = [x.strip() for x in f.readlines() if x.strip()]
+        words = [x.strip().split()[0] for x in f.readlines() if x.strip() and x.strip() != '']
 
     word_to_id = dict(zip(words, range(len(words))))
-    return words, word_to_id
+
+    path = os.path.join(file_path, './wordEmbedding.pk')
+    with open(path, 'rb') as f:
+        wordEmbedding = pickle.load(f)
+
+    return words, word_to_id, wordEmbedding
 
 
 def get_date_returns(file_path: str) -> dict:
@@ -97,6 +150,48 @@ def get_date_returns(file_path: str) -> dict:
     return date_returns
 
 
+def process_blogs(blogs):
+    """
+    早评、午评短于200，且对应前一日的收评、当天收评短于300，则合并到对应位置，否则去掉
+
+    删除长度小于250的早评、晚评
+    :return:
+    """
+    # 将blogs中的每个元素的type从tuple变为list
+    for i, blog in enumerate(blogs):
+        blogs[i] = list(blog)
+
+    index_to_be_removed = []
+    for i, blog in enumerate(blogs):
+        created_date: datetime.datetime = blog[3]
+        date = created_date.date()
+        time = created_date.time()
+        # 处理早评
+        if time.__lt__(datetime.time(9, 25, 0, 0)):
+            # 长度小于200
+            if len(blog[2].split()) <= 200:
+                for index in range(i + 1, i + 4):
+                    # 寻找符合条件的上一交易日，并将早评添加到其后面
+                    if index < blogs.__len__() \
+                            and date.__sub__(blogs[index][3].date()).days <= 3 and len(blogs[index][2].split()) <= 300:
+                        blogs[index][2] = ' '.join(blogs[index][2].split() + blog[2].split()[1:])
+                        break
+            if len(blog[2].split()) <= 250:
+                index_to_be_removed.append(i)
+        elif time.__lt__(datetime.time(14, 30, 0, 0)):  # 处理午评
+            # 长度小于200
+            if len(blog[2].split()) <= 200:
+                for index in range(i - 1, i - 3):
+                    # 查看当天是否有收评，若有，检查长度是否小于300
+                    if date.__eq__(blogs[index][3].date()) and len(blogs[index][2].split()) <= 300:
+                        blogs[index][2] = ' '.join(blogs[index][2].split() + blog[2].split()[1:])
+                        break
+            if len(blog[2].split()) <= 250:
+                index_to_be_removed.append(i)
+
+    return [blogs[i] for i in range(0, len(blogs)) if i not in index_to_be_removed]
+
+
 def get_all_samples(date_returns: dict, word_to_id: dict, bloggers=blogger_names):
     """
     返回训练集和测试集，用id表示
@@ -110,7 +205,7 @@ def get_all_samples(date_returns: dict, word_to_id: dict, bloggers=blogger_names
     # 获取训练集所有数据
     train_blogs = []
     for blogger_name in bloggers:
-        sql = "select * from processed_blogs " \
+        sql = "select * from processed_blogs_all_words " \
               "where blogger_name = \'%s\' and created_date between \'%s\' and \'%s\' order by created_date desc;" \
               % (blogger_name, train_start, train_end)
         try:
@@ -119,11 +214,12 @@ def get_all_samples(date_returns: dict, word_to_id: dict, bloggers=blogger_names
         except:
             raise Exception("Error when fetching blogs")
         train_blogs.extend(results)  # 每一个元素是一个tuple，代表了数据库中的一行
+    train_blogs = process_blogs(train_blogs)
 
     # 获取测试集所有数据
     test_blogs = []
     for blogger_name in bloggers:
-        sql = "select * from processed_blogs " \
+        sql = "select * from processed_blogs_all_words " \
               "where blogger_name = \'%s\' and created_date between \'%s\' and \'%s\' order by created_date desc;" \
               % (blogger_name, test_start, test_end)
         try:
@@ -132,6 +228,7 @@ def get_all_samples(date_returns: dict, word_to_id: dict, bloggers=blogger_names
         except:
             raise Exception("Error when fetching blogs")
         test_blogs.extend(results)  # 每一个元素是一个tuple，代表了数据库中的一行
+    test_blogs = process_blogs(test_blogs)
 
     # 构建训练集
     x_train: list[list] = []
@@ -226,7 +323,7 @@ def batch_iter(x, y_, shuffle=True):
         yield x_shuffle[start_id:end_id], y_shuffle[start_id:end_id]
 
 
-# if __name__ == '__main__':
+if __name__ == '__main__':
     # dic = get_synonyms('./')
     # stop_words = get_stop_words('./')
     # print(type(stop_words))
@@ -236,17 +333,28 @@ def batch_iter(x, y_, shuffle=True):
     # for k, v in dic.items():
     #     print(k, v)
 
-    # build_vocab()
+    build_vocab()
+    # with open('./wordEmbedding.pk', 'rb') as f:
+    #     wordEmbedding = pickle.load(f)
+    # print(wordEmbedding[0])
+    # print(wordEmbedding[1])
+    # print(wordEmbedding[4])
 
     # results = get_all_samples(['余岳桐'])
     # print(results[3])
 
-    # words, word_to_id = read_vocab('./')  # 读取字典
+    # _, word_to_id = read_vocab('./')  # 读取字典
     # date_returns: dict = get_date_returns('./')  # 每个日期接下来三个交易日的return
     # x_train, y_train, x_test, y_test = get_all_samples(date_returns, word_to_id)
     # y_ = numpy.argmax(y_train, 1).tolist()
     # print(len(y_))
     # print(len([label for label in y_ if label == 0]))
     # print(len([label for label in y_ if label == 1]))
-    # print(len([x for x in y_test if x == 2]))
+
+    # 计算平均长度
+    # train_blogs = get_all_samples(date_returns, word_to_id)
+    # print(len(train_blogs))
+    # words = [blog[2].split() for blog in train_blogs]
+    # length = sum([len(x) for x in words])
+    # print(float(length) / float(len(train_blogs)))
 

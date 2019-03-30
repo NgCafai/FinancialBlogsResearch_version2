@@ -18,7 +18,7 @@ def process_original_blogs(blogger_name):
     jieba.load_userdict("../../Util/MyDict.txt")
     # 连接数据库
     db = pymysql.connect(MYSQL_HOST, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE,
-                         port=MYSQL_PORT)
+                         port=MYSQL_PORT, charset='utf8')
     cursor = db.cursor()
 
     # 停用词表
@@ -40,8 +40,6 @@ def process_original_blogs(blogger_name):
         target_sentence = ''
         # 标题
         headline = blogs[i][2]
-        if '张中秦：' in headline:
-            headline = headline.replace('张中秦：', '')
 
         content = blogs[i][3]
         target_sentence += headline
@@ -61,6 +59,8 @@ def process_original_blogs(blogger_name):
             content = content[0: content.find('最新一天个股主力净买比例前十名')]
         if 'Level2数据显示' in content:
             content = content[0: content.find('Level2数据显示')]
+        if '最近常有博友来信要求' in content:
+            content = content[0: content.find('最近常有博友来信要求')]
 
         paragraphs = content.split('\n')
         if paragraphs[0] == headline:

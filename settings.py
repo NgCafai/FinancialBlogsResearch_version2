@@ -16,17 +16,18 @@ REDIS_PORT = 6379
 REDIS_PASSWORD = None
 
 # 段落长度分界线
-PARAGRAPH_BOUNDARY = 150
+PARAGRAPH_BOUNDARY = 200
 
-# 所有博主的名字
-blogger_names = ['余岳桐', '张中秦', '首山']
+# 所有用于训练分类模型的博主的名字
+blogger_names = ['余岳桐', '张中秦', '首山', '第六感觉', '股海上的灯塔',
+                 '彬哥看盘', '陈尚盈', '波段之子', '老股民大张']
 
 # 训练集开始时间：
 train_start = '2009-01-01 00:00:00'
-train_end = '2017-10-31 23:59:59'
+train_end = '2017-10-15 23:59:59'
 train_start_date = datetime.date(2009, 1, 1)
-train_end_date = datetime.date(2017, 10, 31)
-test_start = '2017-11-01 00:00:00'
+train_end_date = datetime.date(2017, 10, 15)
+test_start = '2017-10-16 00:00:00'
 test_end = '2019-03-12 23:59:59'
 
 # 对未来三天的回报率进行三分类的上下分界线
@@ -35,31 +36,32 @@ POSITIVE_BOUNDARY = 0.0171055476283131
 
 
 # 训练模型的配置参数
-seq_length = 150  # 序列长度
-batch_size = 16  # 每批次的样本数
+seq_length: int = 350  # 序列长度
+batch_size = 30  # 每批次的样本数
 vocab_size = 5000  # 词汇表大小
 num_classes = 2
+embedding_dim = 100
 
 
 class ModelConfig(object):
     """
     模型配置参数
     """
-    embedding_dim = 16  # 词向量维度
-    seq_length = 150  # 序列长度
-    num_classes = 2  # 类别数
-    num_filters = 90  # 卷积层深度
-    kernel_size = [3, 5, 8]  # kernel（或称为filter）的尺寸
-    vocab_size = 5000    # 词汇表大小
+    embedding_dim = embedding_dim  # 词向量维度
+    seq_length = seq_length  # 序列长度
+    num_classes = num_classes  # 类别数
+    num_filters = 320  # 卷积层深度
+    kernel_size = [2, 3, 5, 8]  # kernel（或称为filter）的尺寸
+    vocab_size = vocab_size   # 词汇表大小
 
-    hidden_dim = 64  # 全连接层神经元数目
+    hidden_dim = 100  # 全连接层神经元数目
 
     l2_lambda = 5e-4  # l2正则化的lambda
     dropout_keep_prob = 0.5  # dropout保留比列
     learning_rate = 1e-4  # 学习率
 
-    batch_size = 16  # 每批次的样本数
-    num_epochs = 4  # 在所有训练数据上迭代的次数
+    batch_size = batch_size  # 每批次的样本数
+    num_epochs = 8  # 在所有训练数据上迭代的次数
 
-    print_per_batch = 40  # 每多少个batch输出一次结果
-    save_per_batch = 5  # 每多少个batch存入tensorboard
+    print_per_batch = 150  # 每多少个batch输出一次结果
+    save_per_batch = 30  # 每多少个batch存入tensorboard
